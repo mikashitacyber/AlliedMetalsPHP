@@ -1,0 +1,13 @@
+# Local configuration and credentials
+/config/config.php
+/.env
+/.env.*
+!/.env.example
+
+# Runtime and customer-uploaded files
+/uploads/*
+!/uploads/.gitkeep
+!/uploads/.htaccess
+
+# Local logs
+*.log
