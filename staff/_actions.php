@@ -2,6 +2,10 @@
 require_once __DIR__ . '/../includes/document_storage.php';
 require_once __DIR__ . '/../includes/notifications.php';
 
+if (empty($_SESSION['inquiry_quote_csrf'])) {
+    $_SESSION['inquiry_quote_csrf'] = bin2hex(random_bytes(32));
+}
+
 // Include this AFTER config.php + requireRole() in any staff page that needs
 // to handle assign/status/reply/request-info actions on a ticket.
 // Redirects back to whichever page included it (queue.php or assigned.php).
@@ -9,6 +13,78 @@ require_once __DIR__ . '/../includes/notifications.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int)($_POST['inquiry_id'] ?? 0);
     $action = $_POST['action'] ?? '';
+
+    if ($action === 'save_quote' && $id > 0) {
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : '';
+        $amount = is_string($_POST['amount'] ?? null) ? trim($_POST['amount']) : '';
+        $notes = is_string($_POST['quote_notes'] ?? null) ? trim($_POST['quote_notes']) : '';
+        $validUntil = is_string($_POST['valid_until'] ?? null) ? $_POST['valid_until'] : '';
+        $validDateFormat = preg_match('/^\d{4}-\d{2}-\d{2}$/D', $validUntil) === 1;
+        $validDate = $validDateFormat ? DateTimeImmutable::createFromFormat('!Y-m-d', $validUntil) : false;
+        $dateErrors = DateTimeImmutable::getLastErrors();
+        $validDateInput = $validDate !== false
+            && ($dateErrors === false || ($dateErrors['warning_count'] === 0 && $dateErrors['error_count'] === 0))
+            && $validDate->format('Y-m-d') === $validUntil;
+
+        if (!hash_equals($_SESSION['inquiry_quote_csrf'], $token)) {
+            $_SESSION['flash'] = 'Refresh the page before saving the quotation.';
+        } elseif (!preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', $amount) || (float)$amount <= 0) {
+            $_SESSION['flash'] = 'Enter a quotation amount greater than zero with no more than two decimal places.';
+        } elseif (!$validDateInput || $validUntil < date('Y-m-d')) {
+            $_SESSION['flash'] = 'Choose a valid quotation expiry date that is today or later.';
+        } elseif (mb_strlen($notes, 'UTF-8') > 5000) {
+            $_SESSION['flash'] = 'Quotation notes must be no more than 5,000 characters.';
+        } else {
+            try {
+                $pdo->beginTransaction();
+                $inquiryStmt = $pdo->prepare('SELECT user_id, type, status, assigned_staff_id, ticket_no FROM inquiries WHERE inquiry_id = ? FOR UPDATE');
+                $inquiryStmt->execute([$id]);
+                $inquiry = $inquiryStmt->fetch();
+                if (!$inquiry || (int)$inquiry['assigned_staff_id'] !== (int)$u['user_id']
+                    || !isQuotableInquiryType($inquiry['type']) || isInquiryComplete($inquiry['status'])) {
+                    throw new InvalidArgumentException('Only the assigned staff member can quote an active order or service request.');
+                }
+
+                $quoteStmt = $pdo->prepare("
+                    INSERT INTO inquiry_quotes (inquiry_id, amount, notes, valid_until, status, quoted_by, quoted_at, responded_at)
+                    VALUES (?, ?, ?, ?, 'offered', ?, NOW(), NULL)
+                    ON DUPLICATE KEY UPDATE amount = VALUES(amount), notes = VALUES(notes),
+                        valid_until = VALUES(valid_until), status = 'offered', quoted_by = VALUES(quoted_by),
+                        quoted_at = NOW(), responded_at = NULL
+                ");
+                $quoteStmt->execute([$id, $amount, $notes, $validUntil, (int)$u['user_id']]);
+
+                if ($inquiry['status'] !== 'Quoted' && in_array('Quoted', inquiryStatuses($inquiry['type']), true)) {
+                    $pdo->prepare("UPDATE inquiries SET status = 'Quoted' WHERE inquiry_id = ?")->execute([$id]);
+                    $pdo->prepare('INSERT INTO status_history (inquiry_id, old_status, new_status, changed_by) VALUES (?, ?, ?, ?)')
+                        ->execute([$id, $inquiry['status'], 'Quoted', (int)$u['user_id']]);
+                }
+
+                createUserNotification(
+                    $pdo,
+                    (int)$inquiry['user_id'],
+                    'Quotation received',
+                    "A quotation is ready for request {$inquiry['ticket_no']}.",
+                    BASE_URL . '/customer/inquiry_detail.php?id=' . $id
+                );
+                $pdo->commit();
+                $_SESSION['flash'] = "Quotation saved and sent to the customer.";
+            } catch (InvalidArgumentException $quoteError) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $_SESSION['flash'] = $quoteError->getMessage();
+            } catch (Throwable $quoteError) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log('Staff quotation save failed: ' . $quoteError->getMessage());
+                $_SESSION['flash'] = 'The quotation could not be saved. Please try again.';
+            }
+        }
+        header('Location: ' . basename($_SERVER['SCRIPT_NAME']) . '?id=' . $id);
+        exit;
+    }
 
     $ticketStatus = $pdo->prepare('SELECT status FROM inquiries WHERE inquiry_id = ?');
     $ticketStatus->execute([$id]);

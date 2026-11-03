@@ -6,12 +6,17 @@ $u = currentUser();
 
 $status = $_GET['status'] ?? '';
 $q = trim($_GET['q'] ?? '');
+$attention = ($_GET['attention'] ?? '') === 'quote' ? 'quote' : '';
 
-$sql = "SELECT * FROM inquiries WHERE user_id = ?";
+$sql = "SELECT i.*, q.amount AS quote_amount, q.status AS quote_status, q.valid_until AS quote_valid_until
+        FROM inquiries i
+        LEFT JOIN inquiry_quotes q ON q.inquiry_id = i.inquiry_id
+        WHERE i.user_id = ?";
 $params = [$u['user_id']];
-if ($status !== '') { $sql .= " AND status = ?"; $params[] = $status; }
-if ($q !== '') { $sql .= " AND (ticket_no LIKE ? OR type LIKE ?)"; $params[] = "%$q%"; $params[] = "%$q%"; }
-$sql .= " ORDER BY created_at DESC";
+if ($status !== '') { $sql .= " AND i.status = ?"; $params[] = $status; }
+if ($attention === 'quote') { $sql .= " AND q.status = 'offered' AND q.valid_until >= CURDATE()"; }
+if ($q !== '') { $sql .= " AND (i.ticket_no LIKE ? OR i.type LIKE ?)"; $params[] = "%$q%"; $params[] = "%$q%"; }
+$sql .= " ORDER BY i.created_at DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $tickets = $stmt->fetchAll();
@@ -30,6 +35,10 @@ require __DIR__ . '/../includes/header.php';
         <div class="shell-body">
             <form method="get" class="filter-row">
                 <?php if (($_GET['upload'] ?? '') === '1'): ?><input type="hidden" name="upload" value="1"><?php endif; ?>
+                <select name="attention" aria-label="Filter requests needing action">
+                    <option value="">All requests</option>
+                    <option value="quote" <?= $attention === 'quote' ? 'selected' : '' ?>>Quotes needing response</option>
+                </select>
                 <select name="status" onchange="this.form.submit()">
                     <option value="">All statuses</option>
                     <?php foreach ($statusOrder as $s): ?>
@@ -48,8 +57,8 @@ require __DIR__ . '/../includes/header.php';
             <?php if (empty($tickets)): ?>
                 <div class="empty">
                     <div class="ic">☰</div>
-                    <?= $q !== '' || $status !== '' ? 'No inquiries match these filters.' : 'You do not have any requests yet. Create one before uploading related files.' ?>
-                    <?php if ($q === '' && $status === ''): ?>
+                    <?= $q !== '' || $status !== '' || $attention !== '' ? 'No requests match these filters.' : 'You do not have any requests yet. Create one before uploading related files.' ?>
+                    <?php if ($q === '' && $status === '' && $attention === ''): ?>
                         <p><a class="btn btn-primary btn-sm" href="new_inquiry.php">Create an Inquiry</a></p>
                     <?php endif; ?>
                 </div>

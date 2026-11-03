@@ -25,13 +25,15 @@ $stmt->execute([$u['user_id']]);
 $list = $stmt->fetchAll();
 
 $selectedId = (int)($_GET['id'] ?? ($list[0]['inquiry_id'] ?? 0));
-$selected = null; $msgs = $atts = [];
+$selected = null; $msgs = $atts = []; $quote = null;
 foreach ($list as $t) { if ($t['inquiry_id'] == $selectedId) { $selected = $t; break; } }
 if ($selected) {
     $m = $pdo->prepare("SELECT * FROM messages WHERE inquiry_id = ? ORDER BY message_id ASC");
     $m->execute([$selectedId]); $msgs = $m->fetchAll();
     $a = $pdo->prepare("SELECT a.*, uploader.full_name AS uploader_name FROM attachments a LEFT JOIN users uploader ON uploader.user_id = a.uploaded_by WHERE a.inquiry_id = ?");
     $a->execute([$selectedId]); $atts = $a->fetchAll();
+    $q = $pdo->prepare('SELECT * FROM inquiry_quotes WHERE inquiry_id = ?');
+    $q->execute([$selectedId]); $quote = $q->fetch() ?: null;
 }
 
 $pageTitle = 'Assigned to Me';

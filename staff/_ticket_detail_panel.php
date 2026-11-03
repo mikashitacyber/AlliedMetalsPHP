@@ -9,6 +9,12 @@ if (!$selected): ?>
     $ticketComplete = isInquiryComplete($selected['status']);
     $canManageDocuments = in_array($u['role'], ['HR', 'Admin'], true)
         || ($u['role'] === 'Staff' && (int)$selected['assigned_staff_id'] === (int)$u['user_id']);
+    $canManageQuote = $u['role'] === 'Staff'
+        && (int)$selected['assigned_staff_id'] === (int)$u['user_id']
+        && isQuotableInquiryType($selected['type']);
+    $canViewQuote = in_array($u['role'], ['HR', 'Admin'], true)
+        || ($u['role'] === 'Staff' && (int)$selected['assigned_staff_id'] === (int)$u['user_id']);
+    $quoteExpired = $quote && $quote['status'] === 'offered' && $quote['valid_until'] < date('Y-m-d');
     ?>
     <div class="detail-head">
         <div class="ticket-id-lg mono"><?= htmlspecialchars($selected['ticket_no']) ?></div>
@@ -27,6 +33,27 @@ if (!$selected): ?>
             <div class="tl-step <?= $i<$stepIdx?'done':'' ?> <?= $i===$stepIdx?'current':'' ?>"><div class="dot"></div><div class="lbl"><?= $s ?></div></div>
         <?php endforeach; ?>
     </div>
+    <?php if ($quote && $canViewQuote): ?>
+        <section class="inquiry-quote staff-quote">
+            <div class="inquiry-quote-head">
+                <h3>Current quotation</h3>
+                <?php
+                $quoteStatusLabel = $quoteExpired ? 'Expired' : match ($quote['status']) {
+                    'accepted' => 'Accepted',
+                    'declined' => 'Declined',
+                    default => 'Awaiting customer',
+                };
+                ?>
+                <span class="quote-status quote-status-<?= $quoteExpired ? 'expired' : htmlspecialchars($quote['status'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($quoteStatusLabel) ?></span>
+            </div>
+            <div class="quote-amount">₱<?= number_format((float)$quote['amount'], 2) ?> <span>PHP</span></div>
+            <p class="quote-validity">Valid through <?= date('M j, Y', strtotime($quote['valid_until'])) ?></p>
+            <?php if ($quote['notes'] !== ''): ?>
+                <div class="quote-notes"><?= nl2br(htmlspecialchars($quote['notes'], ENT_QUOTES, 'UTF-8')) ?></div>
+            <?php endif; ?>
+            <small class="quote-caption">Last sent <?= date('M j, Y g:i A', strtotime($quote['quoted_at'])) ?></small>
+        </section>
+    <?php endif; ?>
     <div class="thread" data-inquiry-chat data-endpoint="<?= BASE_URL ?>/customer/inquiry_messages_api.php" data-inquiry-id="<?= (int)$selected['inquiry_id'] ?>" data-viewer-role="Staff" data-customer-name="<?= htmlspecialchars($selected['full_name'], ENT_QUOTES, 'UTF-8') ?>" data-last-message-id="<?= (int)($msgs ? end($msgs)['message_id'] : 0) ?>">
         <?php foreach ($msgs as $m): ?>
             <div class="msg <?= $m['sender_role']==='Customer'?'cust':'staff' ?>">
@@ -63,6 +90,29 @@ if (!$selected): ?>
     <?php if ($ticketComplete): ?>
         <div class="form-note">This inquiry is complete and read-only. Its messages and documents remain available for reference.</div>
     <?php else: ?>
+    <?php if ($canManageQuote && !$ticketComplete): ?>
+        <form method="post" class="quote-editor">
+            <h4><?= $quote ? 'Update quotation' : 'Prepare a quotation' ?></h4>
+            <input type="hidden" name="action" value="save_quote">
+            <input type="hidden" name="inquiry_id" value="<?= (int)$selected['inquiry_id'] ?>">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['inquiry_quote_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+            <div class="quote-editor-fields">
+                <label>Amount (PHP)
+                    <input type="number" name="amount" min="0.01" max="9999999999.99" step="0.01" required value="<?= $quote ? htmlspecialchars((string)$quote['amount'], ENT_QUOTES, 'UTF-8') : '' ?>">
+                </label>
+                <label>Valid through
+                    <input type="date" name="valid_until" min="<?= date('Y-m-d') ?>" required value="<?= $quote && $quote['valid_until'] >= date('Y-m-d') ? htmlspecialchars($quote['valid_until'], ENT_QUOTES, 'UTF-8') : date('Y-m-d') ?>">
+                </label>
+            </div>
+            <label>Notes for the customer
+                <textarea name="quote_notes" maxlength="5000" placeholder="Describe what is included, exclusions, or other quote terms."><?= $quote ? htmlspecialchars($quote['notes'], ENT_QUOTES, 'UTF-8') : '' ?></textarea>
+            </label>
+            <?php if ($quote && in_array($quote['status'], ['accepted', 'declined'], true)): ?>
+                <p class="quote-editor-hint">Saving an update will send a revised quotation and ask the customer to respond again.</p>
+            <?php endif; ?>
+            <div class="reply-actions"><span class="quote-editor-hint">Saving sends this quotation to the customer.</span><button class="btn btn-primary btn-sm" type="submit">Send quotation</button></div>
+        </form>
+    <?php endif; ?>
     <div class="reply-box">
         <div class="staff-controls" style="margin-bottom:12px;">
             <form method="post" style="display:inline;">

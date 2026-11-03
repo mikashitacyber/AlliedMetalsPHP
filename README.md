@@ -5,7 +5,9 @@
 Customers can request an account through public sign-up. New accounts remain
 pending until an Admin reviews and approves them in **Manage Users**; only approved
 customers can sign in. Admins no longer create customer accounts or set customer
-passwords directly.
+passwords directly. For non-general service and order requests, assigned Staff can send
+a formal PHP quotation with notes and an expiry date. Customers can review it and accept
+or decline it from the request page; staff can issue a revised quote if needed.
 
 | Role | Created by | Can do |
 |---|---|---|
@@ -24,6 +26,9 @@ They do not show order-production or delivery stages, and an answered general in
 Quotation, equipment, and project requests continue to use the order workflow below.
 Answered, Delivered, and Closed inquiries leave the active staff queues and become read-only;
 their messages and documents remain available in the Completed Inquiries archive.
+Customers see a plain-language explanation of the current stage and dated milestone history.
+Milestone dates are recorded when staff update a request; they are not automatic production or
+GPS tracking.
 
 Admin and HR assign employee tasks from **Work Assignments**. Tasks can be deliveries,
 installations, or other work; they include instructions, a site address, and a due date, and
@@ -37,10 +42,18 @@ job assignments into the new employee task list and leaves the original legacy r
 
 ## Setup
 
-1. Copy the folder into `htdocs`. In `config/config.php` set `BASE_URL` to the exact
-   URL path of the folder (for this workspace: `/AlliedMetalsPortal/AlliedMetalsPHP`)
-   and `$DB_PORT` to your MySQL port (3306 default; 3307 on some PCs).
-2. **New install:** in phpMyAdmin, open the **SQL** tab and run `schema.sql`.
+1. Install XAMPP (or another server with a compatible PHP version, PDO MySQL, and
+   MySQL/MariaDB). Start Apache and MySQL, then clone/download this repository into
+   `htdocs`. For example, if the folder is
+   `C:\xampp\htdocs\AlliedMetalsPHP`, the site URL is
+   `http://localhost/AlliedMetalsPHP/`.
+2. Copy `config/config.example.php` to `config/config.php`. Set `BASE_URL` to the
+   URL path of the folder. Set the database values for your local MySQL server; the
+   example defaults are for a standard XAMPP installation. `config/config.php` is
+   intentionally excluded from Git because it may contain local credentials.
+3. **New install:** in phpMyAdmin, create/open the `allied_metals` database and run
+   `schema.sql` from the repository. This schema includes all current tables, so do
+   not run the upgrade scripts for a fresh database.
    **Existing database from an earlier version:** select `allied_metals`, open its
    **SQL** tab and run any migrations not yet applied, in order: `upgrade_v3.sql`,
    `upgrade_v4.sql` (staff status),
@@ -48,12 +61,20 @@ job assignments into the new employee task list and leaves the original legacy r
    `upgrade_v7.sql` (legacy assignment history), `upgrade_v8.sql` (profile photos and bios),
    `upgrade_v9.sql` (employee task assignments), `upgrade_v10.sql` (employee-started customer conversations),
    `upgrade_v11.sql` (direct-message image attachments), `upgrade_v12.sql`
-   (customer notifications), and `upgrade_v13.sql` (pending customer sign-ups).
+   (customer notifications), `upgrade_v13.sql` (pending customer sign-ups), and
+   `upgrade_v14.sql` (formal customer quotations).
    Run each only once. Existing legacy job-order rows are not deleted by `upgrade_v9.sql`.
-3. Open `setup_first_admin.php` once in the browser to create the first Admin, log in,
-   then **delete that file**.
-4. From the Admin portal create Staff, HR and Field Technician accounts. Review
+4. Open `setup_first_admin.php` in the browser and create the first Admin using a
+   unique password. After signing in, **delete that file**. The setup page disables
+   itself once an Admin exists and never displays the password.
+5. From the Admin portal create Staff, HR and Field Technician accounts. Review
    customer sign-up requests in **Manage Users**.
+
+The GitHub repository contains source code, not a hosted/running website or a copy of
+the local database and customer uploads. To demo on another computer, import the schema,
+create its local config, and use demo accounts/data. The app has no automated test suite;
+verify login, request submission, staff status updates, quotes, and file handling on the
+target computer before presenting.
 
 New and changed passwords must be at least 8 characters, include at least one
 letter and one number, and be no more than 72 bytes. Existing passwords continue
@@ -94,6 +115,13 @@ and account information, see each customer's inquiry/order history, and export t
 customer's records as CSV. Customer Service department Staff can view the report; other
 Staff departments do not have access.
 
+Assigned Staff can prepare a formal quotation for non-general order and service requests.
+Each request has one current quote with a PHP amount, optional notes, and a valid-through
+date. Sending or revising a quote notifies the customer and moves the request to **Quoted**.
+Customers can accept or decline an unexpired quote; their response is recorded in the
+request conversation. Apply `upgrade_v14.sql` once to existing databases before using
+this feature.
+
 The Admin and HR **Decision Support** dashboard uses transparent rules to highlight
 high-priority and 24-hour-old open inquiries, suggest a matching-department staff member
 based on open workload (with online presence as a tie-breaker), and flag employees
@@ -115,7 +143,8 @@ conversations remain available for order-specific discussions. Presence is updat
 a user is active in the portal. Existing
 databases must run `upgrade_v10.sql` and `upgrade_v11.sql` to enable direct messages
 and image attachments, `upgrade_v12.sql` to enable customer notifications, and
-`upgrade_v13.sql` to enable customer sign-up requests.
+`upgrade_v13.sql` to enable customer sign-up requests, and `upgrade_v14.sql` to enable
+formal customer quotations.
 Customers receive unread alerts for direct employee messages, staff replies, request
 status changes, staff assignment, and documents added to a request.
 

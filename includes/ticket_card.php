@@ -19,6 +19,22 @@ function stampClassFor(string $status): string {
 
 function renderTicketCard(array $inquiry, string $linkTo, bool $showCustomer = false): void {
     $stamp = stampClassFor($inquiry['status']);
+    $quoteSummary = null;
+    $quoteSummaryClass = 'ticket-quote-summary';
+    if (($inquiry['quote_status'] ?? null) === 'offered') {
+        if (($inquiry['quote_valid_until'] ?? '') < date('Y-m-d')) {
+            $quoteSummary = 'Quotation expired · contact Allied Metals for an update';
+            $quoteSummaryClass .= ' expired';
+        } else {
+            $quoteSummary = 'Quotation needs your response · ₱' . number_format((float)$inquiry['quote_amount'], 2)
+                . ' · valid through ' . date('M j, Y', strtotime($inquiry['quote_valid_until']));
+            $quoteSummaryClass .= ' action-needed';
+        }
+    } elseif (($inquiry['quote_status'] ?? null) === 'accepted') {
+        $quoteSummary = 'Quotation accepted';
+    } elseif (($inquiry['quote_status'] ?? null) === 'declined') {
+        $quoteSummary = 'Quotation declined';
+    }
     $priorityLabel = match ($inquiry['priority']) {
         'high' => 'High priority',
         'low' => 'Low priority',
@@ -44,6 +60,9 @@ function renderTicketCard(array $inquiry, string $linkTo, bool $showCustomer = f
                 <span>🕒 <?= date('M j, Y', strtotime($inquiry['created_at'])) ?></span>
                 <span class="pill priority-<?= $inquiry['priority'] ?>"><?= $priorityLabel ?></span>
             </div>
+            <?php if ($quoteSummary !== null): ?>
+                <div class="<?= $quoteSummaryClass ?>"><?= htmlspecialchars($quoteSummary, ENT_QUOTES, 'UTF-8') ?></div>
+            <?php endif; ?>
         </div>
     </a>
     <?php

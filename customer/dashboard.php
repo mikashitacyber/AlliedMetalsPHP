@@ -4,7 +4,14 @@ requireRole('Customer');
 require __DIR__ . '/../includes/ticket_card.php';
 $u = currentUser();
 
-$stmt = $pdo->prepare("SELECT * FROM inquiries WHERE user_id = ? ORDER BY created_at DESC LIMIT 3");
+$stmt = $pdo->prepare("
+    SELECT i.*, q.amount AS quote_amount, q.status AS quote_status, q.valid_until AS quote_valid_until
+    FROM inquiries i
+    LEFT JOIN inquiry_quotes q ON q.inquiry_id = i.inquiry_id
+    WHERE i.user_id = ?
+    ORDER BY i.created_at DESC
+    LIMIT 3
+");
 $stmt->execute([$u['user_id']]);
 $recent = $stmt->fetchAll();
 
